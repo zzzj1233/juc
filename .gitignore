@@ -11,7 +11,9 @@
 
 # Mobile Tools for Java (J2ME)
 .mtj.tmp/
-
+src/main/java/com/zzzj/atomic
+src/main/java/com/zzzj/momory
+src/test
 # Package Files #
 *.jar
 *.war
