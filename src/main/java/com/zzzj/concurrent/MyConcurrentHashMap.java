@@ -1,5 +1,7 @@
 package com.zzzj.concurrent;
 
+import sun.reflect.generics.reflectiveObjects.NotImplementedException;
+
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicLong;
 import java.util.concurrent.atomic.AtomicReferenceArray;
@@ -9,6 +11,7 @@ import java.util.concurrent.atomic.AtomicReferenceArray;
  * <ol>
  *     <li>链表长度 > 8 && table.length >= 64时 , 链表可以转红黑树</li>
  *     <li>CountCells数组可扩充</li>
+ *     <li>transfer & resize</li>
  * </ol>
  *
  * @author Zzzj
@@ -26,6 +29,43 @@ public class MyConcurrentHashMap<K, V> {
     private static final int DEFAULT_CAPACITY = 16;
     private int capacity;
 
+
+    public V get(K key) {
+        if (key == null) {
+            throw new IllegalArgumentException("key can't be empty !");
+        }
+        if (table == null) {
+            return null;
+        }
+
+        int hash = getHash(key);
+
+        Node<K, V> node;
+
+        if ((node = table.get(hash)) == null) {
+            return null;
+        }
+
+        if (node.hash == hash && node.key.equals(key)) {
+            return node.value;
+        }
+
+        // forwardingNode or tree
+        if (node.hash < 0) {
+            return node.find(hash, key);
+        }
+
+        // linked list
+        Node<K, V> next = node;
+        for (; ; ) {
+            if (next.hash == hash && next.key.equals(key)) {
+                return next.value;
+            }
+            if ((next = next.next) == null) {
+                return null;
+            }
+        }
+    }
 
     public void put(K key, V value) {
         if (key == null) {
@@ -70,7 +110,7 @@ public class MyConcurrentHashMap<K, V> {
                         next = next.next;
                     } else {
                         next.next = new Node<>(key, value, hash);
-                        return;
+                        break;
                     }
                 }
             } else {
@@ -167,6 +207,7 @@ public class MyConcurrentHashMap<K, V> {
                     if (counterCells == null) {
                         counterCells = new AtomicReferenceArray<>(rs);
                     }
+                    cellBusy.set(0);
                     return;
                 }
             }
@@ -210,7 +251,7 @@ public class MyConcurrentHashMap<K, V> {
 
     }
 
-    public static class Node<K, V> {
+    private static class Node<K, V> {
         public K key;
         public V value;
         public int hash;
@@ -224,7 +265,24 @@ public class MyConcurrentHashMap<K, V> {
             this.hash = hash;
         }
 
+        V find(int hash, K key) {
+            throw new NotImplementedException();
+        }
+    }
 
+    private static class ForwardingNode<K, V> extends Node<K, V> {
+
+        private volatile AtomicReferenceArray<Node<K, V>> nextTable;
+
+        public ForwardingNode(K key, V value, int hash) {
+            super(key, value, hash);
+        }
+
+        @Override
+        V find(int hash, K key) {
+            // find nextTable
+            return null;
+        }
     }
 
 
