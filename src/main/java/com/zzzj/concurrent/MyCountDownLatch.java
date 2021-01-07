@@ -1,4 +1,4 @@
-package com.zzzj.aqs;
+package com.zzzj.concurrent;
 
 /**
  * @author Zzzj

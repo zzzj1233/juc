@@ -1,6 +1,7 @@
-package com.zzzj.aqs;
+package com.zzzj.concurrent;
 
-import com.zzzj.aqs.MyReentrantLock.ConditionObj;
+import com.zzzj.concurrent.MyReentrantLock.ConditionObj;
+import com.zzzj.struct.MinHeap;
 
 import java.util.AbstractQueue;
 import java.util.Collection;
@@ -210,22 +211,22 @@ public class MySchedulerThreadPool extends MyExecutor {
     }
 
     public static void main(String[] args) throws InterruptedException {
-        MySchedulerThreadPool pool = new MySchedulerThreadPool(10);
+        MySchedulerThreadPool pool = new MySchedulerThreadPool(2);
+
+        Runtime.getRuntime().addShutdownHook(new Thread(pool::shutDown));
 
         pool.schedule(() -> {
             System.out.println("hello world~");
         }, 2000, TimeUnit.MILLISECONDS);
 
-        Runtime.getRuntime().addShutdownHook(new Thread(pool::shutDown));
-
-//        pool.scheduleAtFixedDelay(() -> {
-//            System.out.println("hello world~");
-//            try {
-//                Thread.sleep(500);
-//            } catch (InterruptedException e) {
-//                e.printStackTrace();
-//            }
-//        }, 0, 500, TimeUnit.MILLISECONDS);
+        pool.scheduleAtFixedDelay(() -> {
+            System.out.println("hello world~");
+            try {
+                Thread.sleep(500);
+            } catch (InterruptedException e) {
+                e.printStackTrace();
+            }
+        }, 0, 500, TimeUnit.MILLISECONDS);
 
     }
 }

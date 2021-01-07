@@ -1,7 +1,7 @@
-package com.zzzj.aqs;
+package com.zzzj.concurrent;
 
 import com.sun.istack.internal.Nullable;
-import com.zzzj.aqs.MyReentrantLock.ConditionObj;
+import com.zzzj.concurrent.MyReentrantLock.ConditionObj;
 
 import java.util.concurrent.BrokenBarrierException;
 

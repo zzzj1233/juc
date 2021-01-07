@@ -1,4 +1,4 @@
-package com.zzzj.aqs;
+package com.zzzj.struct;
 
 import java.util.ArrayList;
 import java.util.Random;

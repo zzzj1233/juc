@@ -1,4 +1,4 @@
-package com.zzzj.aqs;
+package com.zzzj.concurrent;
 
 import java.util.HashSet;
 import java.util.Random;

@@ -1,6 +1,6 @@
-package com.zzzj.aqs;
+package com.zzzj.concurrent;
 
-import com.zzzj.aqs.MyReentrantLock.ConditionObj;
+import com.zzzj.concurrent.MyReentrantLock.ConditionObj;
 
 /**
  * @author Zzzj
@@ -17,7 +17,7 @@ public class MyQueue<T> {
     public MyQueue(int size) {
         this.lock = new MyReentrantLock();
         this.count = 0;
-        this.items = (T[]) new Object[1];
+        this.items = (T[]) new Object[size];
         this.notFull = lock.newCondition();
         this.notEmpty = lock.newCondition();
     }
