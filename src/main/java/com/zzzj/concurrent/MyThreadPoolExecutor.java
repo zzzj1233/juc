@@ -9,7 +9,7 @@ import java.util.concurrent.atomic.AtomicInteger;
  * @author Zzzj
  * @create 2021-01-01 18:10
  */
-public class MyExecutor {
+public class MyThreadPoolExecutor {
 
     protected final Integer corePoolSize;
     protected final Integer maxPoolSize;
@@ -29,7 +29,7 @@ public class MyExecutor {
     private static final int TIDYING = 2;
     private static final int TERMINATED = 3;
 
-    public MyExecutor(Integer corePoolSize, Integer maxPoolSize, long timeout, TimeUnit timeUnit, BlockingQueue<Runnable> blockingQueue) {
+    public MyThreadPoolExecutor(Integer corePoolSize, Integer maxPoolSize, long timeout, TimeUnit timeUnit, BlockingQueue<Runnable> blockingQueue) {
         this.corePoolSize = corePoolSize;
         this.maxPoolSize = maxPoolSize;
         this.timeout = timeout;
@@ -208,10 +208,10 @@ public class MyExecutor {
 
     public static void main(String[] args) throws InterruptedException {
 
-        MyExecutor myExecutor = new MyExecutor(5, 10, 10, TimeUnit.SECONDS, new ArrayBlockingQueue<>(5));
+        MyThreadPoolExecutor myThreadPoolExecutor = new MyThreadPoolExecutor(5, 10, 10, TimeUnit.SECONDS, new ArrayBlockingQueue<>(5));
 
         for (int i = 0; i < 50; i++) {
-            myExecutor.execute(() -> {
+            myThreadPoolExecutor.execute(() -> {
                 String name = Thread.currentThread().getName();
                 Random random = new Random();
                 System.out.println(name + " start ...");
@@ -226,7 +226,7 @@ public class MyExecutor {
         }
         Thread.sleep(500);
 
-        myExecutor.shutDown();
+        myThreadPoolExecutor.shutDown();
 
         System.out.println("shutdown ... ");
     }

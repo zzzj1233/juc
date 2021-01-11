@@ -13,8 +13,7 @@ import java.util.concurrent.TimeUnit;
  * @author Zzzj
  * @create 2021-01-02 20:12
  */
-public class MySchedulerThreadPool extends MyExecutor {
-
+public class MySchedulerThreadPool extends MyThreadPoolExecutor {
 
     public MySchedulerThreadPool(Integer corePoolSize) {
         super(corePoolSize, Integer.MAX_VALUE, 0, TimeUnit.SECONDS, new MyWorkingDelayQueue());
