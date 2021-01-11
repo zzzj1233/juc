@@ -29,13 +29,11 @@ public class MyFutureTask<V> implements RunnableFuture<V> {
     private V result;
     private Throwable err;
     private volatile Waiter firstWaiter;
-    private volatile Waiter lastWaiter;
 
     // for support cas
     private static Unsafe THE_UNSAFE;
     private static long resultOffset;
     private static long firstWaiterOffset;
-    private static long lastWaiterOffset;
 
     static {
         try {
@@ -46,11 +44,9 @@ public class MyFutureTask<V> implements RunnableFuture<V> {
             };
             THE_UNSAFE = AccessController.doPrivileged(action);
             resultOffset = THE_UNSAFE.objectFieldOffset
-                    (MyReentrantLock.class.getDeclaredField("result"));
+                    (MyFutureTask.class.getDeclaredField("result"));
             firstWaiterOffset = THE_UNSAFE.objectFieldOffset
-                    (MyReentrantLock.class.getDeclaredField("firstWaiter"));
-            lastWaiterOffset = THE_UNSAFE.objectFieldOffset
-                    (MyReentrantLock.class.getDeclaredField("lastWaiter"));
+                    (MyFutureTask.class.getDeclaredField("firstWaiter"));
         } catch (Exception e) {
             // ignore
         }
@@ -60,9 +56,6 @@ public class MyFutureTask<V> implements RunnableFuture<V> {
         return THE_UNSAFE.compareAndSwapObject(this, firstWaiterOffset, except, update);
     }
 
-    private boolean compareAndSetLastWaiter(Waiter except, Waiter update) {
-        return THE_UNSAFE.compareAndSwapObject(this, lastWaiterOffset, except, update);
-    }
 
     public MyFutureTask(Callable<V> callable) {
         assert callable != null;
@@ -73,14 +66,47 @@ public class MyFutureTask<V> implements RunnableFuture<V> {
     @Override
     public V get() throws InterruptedException, ExecutionException {
         doGet(-1);
-        return null;
+
+        // 正常执行
+        if (state.get() == COMPLETE) {
+            return result;
+        }
+
+        // 执行时抛出了异常
+        if (state.get() == EXCEPTIONAL) {
+            throw new ExecutionException(err);
+        }
+
+        // 被取消了
+        if (state.get() >= CANCELLED) {
+            throw new CancellationException();
+        }
+
+        // 不可能执行到这
+        throw new RuntimeException("error !");
     }
 
     @Override
     public V get(long timeout, TimeUnit unit) throws InterruptedException, ExecutionException, TimeoutException {
         assert timeout > 0 && unit != null;
         doGet(unit.toNanos(timeout));
-        return null;
+        // 正常执行
+        if (state.get() == COMPLETE) {
+            return result;
+        }
+
+        // 执行时抛出了异常
+        if (state.get() == EXCEPTIONAL) {
+            throw new ExecutionException(err);
+        }
+
+        // 被取消了
+        if (state.get() >= CANCELLED) {
+            throw new CancellationException();
+        }
+
+        // 超时了,还是没有获取到结果
+        throw new TimeoutException();
     }
 
     public void doGet(long timeOut) throws InterruptedException {
@@ -92,6 +118,9 @@ public class MyFutureTask<V> implements RunnableFuture<V> {
         for (; ; ) {
             // 1. 如果线程在等待时被中断了,直接抛出异常
             if (Thread.interrupted()) {
+                if (waiter != null) {
+                    deQueue(waiter);
+                }
                 throw new InterruptedException();
             }
 
@@ -100,7 +129,7 @@ public class MyFutureTask<V> implements RunnableFuture<V> {
             // 2. 是否已经完成了?
             if (state.get() > RUNNING) {
                 // 出队
-                deQueue(null);
+                deQueue(waiter);
                 return;
             }
 
@@ -110,14 +139,14 @@ public class MyFutureTask<V> implements RunnableFuture<V> {
             }
             // 3. 是否入队了?
             else if (!queued) {
-                enQueue(null);
+                enQueue(waiter);
                 // 入队
                 queued = true;
             }
             // 4. 是否超时了 ?
             else if (timeout && System.nanoTime() <= deadLine) {
                 // 出队
-                deQueue(null);
+                deQueue(waiter);
                 return;
             }
             // 5. 阻塞线程
@@ -133,20 +162,13 @@ public class MyFutureTask<V> implements RunnableFuture<V> {
 
     private void enQueue(Waiter waiter) {
         if (firstWaiter == null && compareAndSetFirstWaiter(null, waiter)) {
-            lastWaiter = firstWaiter;
-            firstWaiter.next = lastWaiter;
             return;
         }
 
-        while (lastWaiter == null || firstWaiter.next == null) {
-            Thread.yield();
-        }
-
-
         for (; ; ) {
-            Waiter last = lastWaiter;
-            if (compareAndSetLastWaiter(last, waiter)) {
-                last.next = waiter;
+            Waiter first = firstWaiter;
+            waiter.next = first;
+            if (compareAndSetFirstWaiter(first, waiter)) {
                 return;
             }
         }
@@ -166,19 +188,13 @@ public class MyFutureTask<V> implements RunnableFuture<V> {
         // 从 head -> next -> next ... -> lastWaiter 一直向下寻找
 
         retry:
-        for (Waiter first = firstWaiter, next = first, previous = null; ; next = first.next) {
+        for (Waiter first = firstWaiter, next = first, previous = null; next != null; next = first.next) {
             // 当前节点是否需要出队?
             if (next.thread != null) {
                 previous = next;
-                continue;
             } else if (previous != null) {
+                // 修改指向
                 previous.next = next.next;
-                // 我们只需要关心当前节点的上一个节点是否被移除队列了。如果是,那么这次并发修改肯定会带来问题。
-                // 如果是上上个节点被移除队列了,那么不会带来任何问题
-                // 因为我们只是修改上个节点的next指向
-                if (previous.thread == null) {
-                    continue retry;
-                }
                 break;
                 // 如果当前遍历的waiter的thread == null && previous == null , 那么当前waiter一定就是首节点
             } else if (!compareAndSetFirstWaiter(next, next.next)) {
@@ -213,14 +229,14 @@ public class MyFutureTask<V> implements RunnableFuture<V> {
     private void handleSuccessful(V result) {
         // why does Doug Lea use cas in hear ?
         // because cancel(true)
-        if (state.compareAndSet(RUNNING, CANCELLED)) {
+        if (state.compareAndSet(RUNNING, COMPLETE)) {
             this.result = result;
         }
     }
 
     private void handleFailure(Throwable throwable) {
         if (state.compareAndSet(RUNNING, EXCEPTIONAL)) {
-            this.result = result;
+            this.err = throwable;
         }
     }
 
@@ -235,7 +251,24 @@ public class MyFutureTask<V> implements RunnableFuture<V> {
     }
 
     private void callWaiter() {
+        if (firstWaiter == null) {
+            return;
+        }
 
+        Waiter first = firstWaiter;
+
+        if (!compareAndSetFirstWaiter(first, null)) {
+            return;
+        }
+
+        while (first != null) {
+            Thread thread = first.thread;
+            if (thread != null) {
+                LockSupport.unpark(thread);
+            }
+            first.thread = null;
+            first = first.next;
+        }
     }
 
     @Override
@@ -246,7 +279,7 @@ public class MyFutureTask<V> implements RunnableFuture<V> {
         }
         // 2. 是否需要打断线程 ?
         if (mayInterruptIfRunning) {
-            thread.interrupt();
+            Thread.currentThread().interrupt();
             // 已经打断过了
             state.set(INTERRUPTED);
         }
@@ -290,21 +323,20 @@ public class MyFutureTask<V> implements RunnableFuture<V> {
         }
     }
 
-    public static void main(String[] args) throws InterruptedException, ExecutionException {
-        //        FutureTask<String> futureTask = new FutureTask<String>(() -> {
-//            Thread.sleep(2000);
-//            return "hello world~";
-//        });
-//
-//        Thread thread = new Thread(futureTask);
-//
-//        thread.start();
-//
-//        Thread.sleep(100);
-//
-//        thread.interrupt();
-//
-//        System.out.println(futureTask.get());
+    public static void main(String[] args) throws InterruptedException, ExecutionException, TimeoutException {
+        MyFutureTask<String> futureTask = new MyFutureTask<String>(() -> {
+            Thread.sleep(2000);
+            return "hello world~";
+        });
+
+        Thread thread = new Thread(futureTask);
+
+        thread.start();
+
+        Thread.sleep(100);
+
+//        futureTask.cancel(false);
+        System.out.println(futureTask.get(1000, TimeUnit.MILLISECONDS));
     }
 
 }
